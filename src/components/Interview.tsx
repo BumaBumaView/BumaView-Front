@@ -3,6 +3,7 @@ import {
   FaceLandmarker,
   FilesetResolver
 } from "@mediapipe/tasks-vision";
+import { calculateScores } from "../utils/scoring";
 
 const questions = [
   "자기소개 부탁드립니다.",
@@ -25,6 +26,7 @@ if (SpeechRecognition) {
 
 export default function Interview() {
   const videoRef = useRef(null);
+  const blendshapesCollector = useRef([]);
   const [faceLandmarker, setFaceLandmarker] = useState(null);
   const [blendshapes, setBlendshapes] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -33,6 +35,7 @@ export default function Interview() {
   const [isListening, setIsListening] = useState(false);
   const [userAnswer, setUserAnswer] = useState("");
   const [allAnswers, setAllAnswers] = useState([]);
+  const [finalScores, setFinalScores] = useState(null);
 
   // TTS 설정
   const speak = (text) => {
@@ -59,17 +62,50 @@ export default function Interview() {
     speak(questions[currentQuestionIndex]);
   };
 
+  const processAndFinalizeInterview = (answers) => {
+    const scoredAnswers = answers.map(item => ({
+      ...item,
+      scores: calculateScores(item.blendshapes)
+    }));
+
+    const totalScores = scoredAnswers.reduce((acc, item) => {
+      acc.attention += item.scores.attention;
+      acc.stability += item.scores.stability;
+      acc.positivity += item.scores.positivity;
+      acc.finalScore += item.scores.finalScore;
+      return acc;
+    }, { attention: 0, stability: 0, positivity: 0, finalScore: 0 });
+
+    const averageScores = {
+      attention: Math.round(totalScores.attention / scoredAnswers.length),
+      stability: Math.round(totalScores.stability / scoredAnswers.length),
+      positivity: Math.round(totalScores.positivity / scoredAnswers.length),
+      finalScore: Math.round(totalScores.finalScore / scoredAnswers.length),
+    };
+
+    setAllAnswers(scoredAnswers);
+    setFinalScores(averageScores);
+    setIsInterviewFinished(true);
+  }
+
   const handleNextQuestion = () => {
     stopListening();
-    setAllAnswers(prev => [...prev, { question: questions[currentQuestionIndex], answer: userAnswer }]);
+    const newAnswer = {
+        question: questions[currentQuestionIndex],
+        answer: userAnswer,
+        blendshapes: blendshapesCollector.current
+    };
+    const updatedAnswers = [...allAnswers, newAnswer];
+    setAllAnswers(updatedAnswers);
     setUserAnswer("");
+    blendshapesCollector.current = [];
 
     const nextIndex = currentQuestionIndex + 1;
     if (nextIndex < questions.length) {
       setCurrentQuestionIndex(nextIndex);
       speak(questions[nextIndex]);
     } else {
-      setIsInterviewFinished(true);
+      processAndFinalizeInterview(updatedAnswers);
     }
   };
 
@@ -79,6 +115,7 @@ export default function Interview() {
         alert("브라우저가 음성 인식을 지원하지 않습니다.");
         return;
     }
+    blendshapesCollector.current = [];
     setIsListening(true);
     recognition.start();
   };
@@ -144,42 +181,70 @@ export default function Interview() {
     if (!faceLandmarker) return;
 
     const video = videoRef.current;
+    let animationFrameId;
 
     async function enableCamera() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       video.srcObject = stream;
       await video.play();
 
-      const processVideo = async () => {
-        if (video.readyState >= 2) {
-          const nowInMs = Date.now();
-          const results = await faceLandmarker.detectForVideo(video, nowInMs);
-          if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
-            setBlendshapes(results.faceBlendshapes[0].categories);
-          }
-        }
-        requestAnimationFrame(processVideo);
-      };
-
       processVideo();
     }
 
-    enableCamera();
-  }, [faceLandmarker]);
+    const processVideo = () => {
+        if (video.readyState >= 2) {
+          const nowInMs = Date.now();
+          const results = faceLandmarker.detectForVideo(video, nowInMs);
+          if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
+            const currentBlendshapes = results.faceBlendshapes[0].categories;
+            setBlendshapes(currentBlendshapes);
+            if (isListening) {
+                blendshapesCollector.current.push(currentBlendshapes);
+            }
+          }
+        }
+        animationFrameId = requestAnimationFrame(processVideo);
+      };
 
-  if (isInterviewFinished) {
+    enableCamera();
+
+    return () => {
+        cancelAnimationFrame(animationFrameId);
+    }
+  }, [faceLandmarker, isListening]);
+
+  if (isInterviewFinished && finalScores) {
     return (
-        <div className="flex flex-col items-center justify-center h-screen bg-gray-100">
-            <h1 className="text-4xl font-bold mb-4">면접이 종료되었습니다.</h1>
-            <p className="text-lg mb-8">수고하셨습니다. 결과를 확인해보세요.</p>
-            <div className="w-full max-w-2xl bg-white p-6 rounded-lg shadow-lg">
-                <h2 className="text-2xl font-bold mb-4">면접 답변 요약</h2>
-                {allAnswers.map((item, index) => (
-                    <div key={index} className="mb-4">
-                        <p className="font-semibold text-gray-800">{item.question}</p>
-                        <p className="text-gray-600">{item.answer}</p>
+        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 sm:p-6">
+            <div className="w-full max-w-4xl bg-white p-6 sm:p-8 rounded-lg shadow-2xl">
+                <h1 className="text-3xl sm:text-4xl font-bold mb-2 text-center text-gray-800">면접 결과</h1>
+                <p className="text-lg mb-6 text-center text-gray-600">수고하셨습니다! 아래는 상세 분석 결과입니다.</p>
+
+                <div className="mb-8 p-6 bg-blue-50 rounded-lg text-center">
+                    <h2 className="text-xl font-semibold mb-2 text-blue-800">최종 점수</h2>
+                    <p className="text-5xl font-bold text-blue-600">{finalScores.finalScore}점</p>
+                    <div className="flex justify-center gap-4 sm:gap-8 mt-4">
+                        <p><strong>집중도:</strong> {finalScores.attention}점</p>
+                        <p><strong>안정감:</strong> {finalScores.stability}점</p>
+                        <p><strong>긍정성:</strong> {finalScores.positivity}점</p>
                     </div>
-                ))}
+                </div>
+
+                <h2 className="text-2xl font-bold mb-4 text-gray-700">질문별 답변 및 분석</h2>
+                <div className="space-y-6">
+                    {allAnswers.map((item, index) => (
+                        <div key={index} className="border border-gray-200 p-4 rounded-lg bg-gray-50">
+                            <p className="font-bold text-lg text-gray-800 mb-2">{index + 1}. {item.question}</p>
+                            <p className="text-gray-700 mb-3">"{item.answer || "답변 없음"}"</p>
+                            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
+                                <span><strong>집중도:</strong> {item.scores.attention}점</span>
+                                <span><strong>안정감:</strong> {item.scores.stability}점</span>
+                                <span><strong>긍정성:</strong> {item.scores.positivity}점</span>
+                                <span className="font-semibold text-indigo-600">질문 점수: {item.scores.finalScore}점</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     )
