@@ -326,10 +326,10 @@ export default function Interview() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-gray-900 text-white">
+    <div className="flex flex-col md:flex-row h-screen bg-gray-100 text-gray-800">
         {/* Left Panel: Video and Controls */}
         <div className="w-full md:w-3/5 lg:w-2/3 p-4 flex flex-col">
-            <div className="relative w-full flex-grow rounded-lg overflow-hidden shadow-lg">
+            <div className="relative w-full flex-grow rounded-lg overflow-hidden shadow-lg bg-black">
                 <video
                     ref={videoRef}
                     autoPlay
@@ -337,7 +337,7 @@ export default function Interview() {
                     muted
                     className="w-full h-full object-cover"
                 />
-                <div className="absolute top-4 left-4 bg-black bg-opacity-60 p-3 rounded-lg">
+                <div className="absolute top-4 left-4 bg-black bg-opacity-50 p-3 rounded-lg text-white">
                     <p className="text-lg font-semibold">{isInterviewStarted ? questions[currentQuestionIndex] : "면접 대기 중..."}</p>
                 </div>
             </div>
@@ -347,36 +347,36 @@ export default function Interview() {
                         <div className="flex gap-4 w-full max-w-md">
                             <div className="flex-1">
                                 <label htmlFor="video-device" className="block text-sm font-medium mb-1">카메라</label>
-                                <select id="video-device" value={selectedVideoDevice} onChange={e => setSelectedVideoDevice(e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-2 w-full">
+                                <select id="video-device" value={selectedVideoDevice} onChange={e => setSelectedVideoDevice(e.target.value)} className="bg-white border border-gray-300 rounded-md px-3 py-2 w-full text-gray-800">
                                     {videoDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
                                 </select>
                             </div>
                             <div className="flex-1">
                                 <label htmlFor="audio-device" className="block text-sm font-medium mb-1">마이크</label>
-                                <select id="audio-device" value={selectedAudioDevice} onChange={e => setSelectedAudioDevice(e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-2 w-full">
+                                <select id="audio-device" value={selectedAudioDevice} onChange={e => setSelectedAudioDevice(e.target.value)} className="bg-white border border-gray-300 rounded-md px-3 py-2 w-full text-gray-800">
                                     {audioDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
                                 </select>
                             </div>
                         </div>
-                        <button onClick={handleStartInterview} className="w-full max-w-xs px-6 py-3 bg-blue-600 rounded-lg text-lg font-bold hover:bg-blue-700 transition-colors">
+                        <button onClick={handleStartInterview} className="w-full max-w-xs px-6 py-3 bg-blue-600 text-white rounded-lg text-lg font-bold hover:bg-blue-700 transition-colors">
                             면접 시작
                         </button>
                     </div>
                 ) : (
                     <div className="grid grid-cols-3 gap-4">
-                        <button onClick={startListening} disabled={isListening} className="px-4 py-3 bg-green-600 rounded-lg font-semibold disabled:bg-green-800 disabled:cursor-not-allowed">답변 시작</button>
-                        <button onClick={stopListening} disabled={!isListening} className="px-4 py-3 bg-red-600 rounded-lg font-semibold disabled:bg-red-800 disabled:cursor-not-allowed">답변 종료</button>
-                        <button onClick={handleNextQuestion} className="px-4 py-3 bg-blue-600 rounded-lg font-semibold">다음 질문</button>
+                        <button onClick={startListening} disabled={isListening} className="px-4 py-3 bg-green-600 text-white rounded-lg font-semibold disabled:bg-green-400 disabled:cursor-not-allowed">답변 시작</button>
+                        <button onClick={stopListening} disabled={!isListening} className="px-4 py-3 bg-red-600 text-white rounded-lg font-semibold disabled:bg-red-400 disabled:cursor-not-allowed">답변 종료</button>
+                        <button onClick={handleNextQuestion} className="px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold">다음 질문</button>
                     </div>
                 )}
             </div>
         </div>
 
         {/* Right Panel: Answer Transcript */}
-        <div className="w-full md:w-2/5 lg:w-1/3 p-4 bg-gray-800 flex flex-col">
-            <div className="flex-grow border border-gray-700 rounded-lg p-4 bg-gray-900 shadow-inner">
-                <h2 className="text-xl font-bold mb-4 text-gray-400">실시간 답변</h2>
-                <div className="text-lg text-gray-200 h-full overflow-y-auto leading-relaxed">
+        <div className="w-full md:w-2/5 lg:w-1/3 p-4 flex flex-col" style={{ maxHeight: '100vh' }}>
+            <div className="flex-grow border border-gray-300 rounded-lg p-4 bg-white shadow-inner flex flex-col min-h-0">
+                <h2 className="text-xl font-bold mb-4 text-gray-600 flex-shrink-0">실시간 답변</h2>
+                <div className="text-lg text-gray-800 flex-grow overflow-y-auto leading-relaxed">
                     {userAnswer || "이곳에 답변이 실시간으로 표시됩니다."}
                 </div>
             </div>
