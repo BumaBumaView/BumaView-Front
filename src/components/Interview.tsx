@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   FaceLandmarker,
   FilesetResolver
@@ -11,6 +12,17 @@ const questions = [
   "자신의 장점과 단점은 무엇이라고 생각하나요?",
   "입사 후 포부에 대해 말씀해주세요.",
 ];
+
+const initialState = {
+  currentQuestionIndex: 0,
+  isInterviewStarted: false,
+  isInterviewFinished: false,
+  isListening: false,
+  userAnswer: "",
+  allAnswers: [],
+  finalScores: null,
+};
+
 
 // STT 설정
 const SpeechRecognition =
@@ -29,13 +41,7 @@ export default function Interview() {
   const blendshapesCollector = useRef([]);
   const finalTranscriptRef = useRef(''); // STT 최종 텍스트 Ref
   const [faceLandmarker, setFaceLandmarker] = useState(null);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [isInterviewStarted, setIsInterviewStarted] = useState(false);
-  const [isInterviewFinished, setIsInterviewFinished] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [userAnswer, setUserAnswer] = useState("");
-  const [allAnswers, setAllAnswers] = useState([]);
-  const [finalScores, setFinalScores] = useState(null);
+  const [interviewState, setInterviewState] = useState(initialState);
 
   // Device states
   const [videoDevices, setVideoDevices] = useState([]);
@@ -43,11 +49,46 @@ export default function Interview() {
   const [selectedVideoDevice, setSelectedVideoDevice] = useState('');
   const [selectedAudioDevice, setSelectedAudioDevice] = useState('');
 
+  const {
+    currentQuestionIndex,
+    isInterviewStarted,
+    isInterviewFinished,
+    isListening,
+    userAnswer,
+    allAnswers,
+    finalScores,
+  } = interviewState;
 
-  // TTS 설정
+  const setState = (newState) => {
+    setInterviewState(prev => ({ ...prev, ...newState }));
+  };
+
+  // STT 제어
+  const startListening = () => {
+    if (!recognition) {
+        alert("브라우저가 음성 인식을 지원하지 않습니다.");
+        return;
+    }
+    setState({ userAnswer: "" });
+    finalTranscriptRef.current = "";
+    blendshapesCollector.current = [];
+    setState({ isListening: true });
+    recognition.start();
+  };
+
+  const stopListening = () => {
+    if (!recognition) return;
+    setState({ isListening: false });
+    recognition.stop();
+  };
+
+  // TTS 설정 및 STT 자동 시작
   const speak = (text) => {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
+    utterance.onend = () => {
+      startListening(); // TTS가 끝나면 자동으로 STT 시작
+    };
     const setVoice = () => {
       const voices = window.speechSynthesis.getVoices();
       const koreanVoice = voices.find((voice) => voice.lang === "ko-KR");
@@ -65,7 +106,7 @@ export default function Interview() {
   };
 
   const handleStartInterview = () => {
-    setIsInterviewStarted(true);
+    setState({ isInterviewStarted: true });
     speak(questions[currentQuestionIndex]);
   };
 
@@ -90,57 +131,39 @@ export default function Interview() {
       finalScore: Math.round(totalScores.finalScore / scoredAnswers.length),
     };
 
-    setAllAnswers(scoredAnswers);
-    setFinalScores(averageScores);
-    setIsInterviewFinished(true);
+    setState({ allAnswers: scoredAnswers, finalScores: averageScores, isInterviewFinished: true });
   }
 
   const handleNextQuestion = () => {
     stopListening();
     const newAnswer = {
         question: questions[currentQuestionIndex],
-        answer: finalTranscriptRef.current, // 최종본은 Ref에서 가져옴
+        answer: finalTranscriptRef.current,
         blendshapes: blendshapesCollector.current
     };
     const updatedAnswers = [...allAnswers, newAnswer];
-    setAllAnswers(updatedAnswers);
-    setUserAnswer(""); // UI 표시용 상태 초기화
-    finalTranscriptRef.current = ""; // Ref 초기화
+    setState({ allAnswers: updatedAnswers, userAnswer: "" });
+    finalTranscriptRef.current = "";
     blendshapesCollector.current = [];
 
     const nextIndex = currentQuestionIndex + 1;
     if (nextIndex < questions.length) {
-      setCurrentQuestionIndex(nextIndex);
+      setState({ currentQuestionIndex: nextIndex });
       speak(questions[nextIndex]);
     } else {
       processAndFinalizeInterview(updatedAnswers);
     }
   };
 
-  // STT 제어
-  const startListening = () => {
-    if (!recognition) {
-        alert("브라우저가 음성 인식을 지원하지 않습니다.");
-        return;
-    }
-    // 답변 시작 시 모든 관련 상태 초기화
-    setUserAnswer("");
-    finalTranscriptRef.current = "";
-    blendshapesCollector.current = [];
-    setIsListening(true);
-    recognition.start();
-  };
-
-  const stopListening = () => {
-    if (!recognition) return;
-    setIsListening(false);
-    recognition.stop();
+  const handleRestart = () => {
+    stopListening();
+    setInterviewState(initialState);
   };
 
   // Get media devices
   const getDevices = async () => {
     try {
-      await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); // Request permission
+      await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter(device => device.kind === 'videoinput');
       const audioInputs = devices.filter(device => device.kind === 'audioinput');
@@ -188,7 +211,7 @@ export default function Interview() {
           interimTranscript += event.results[i][0].transcript;
         }
       }
-      setUserAnswer(finalTranscriptRef.current + interimTranscript);
+      setState({ userAnswer: finalTranscriptRef.current + interimTranscript });
     };
 
     recognition.onend = () => {
@@ -215,7 +238,6 @@ export default function Interview() {
     let animationFrameId;
 
     async function setupCamera() {
-      // 이전에 사용하던 스트림이 있으면 중지
       if (video.srcObject) {
         video.srcObject.getTracks().forEach(track => track.stop());
       }
@@ -262,7 +284,7 @@ export default function Interview() {
             video.srcObject.getTracks().forEach(track => track.stop());
         }
     }
-  }, [faceLandmarker, selectedVideoDevice, selectedAudioDevice, isListening]);
+  }, [faceLandmarker, selectedVideoDevice, selectedAudioDevice]);
 
   if (isInterviewFinished && finalScores) {
     return (
@@ -320,6 +342,14 @@ export default function Interview() {
                         </div>
                     ))}
                 </div>
+                <div className="mt-8 flex justify-center gap-4">
+                    <button onClick={handleRestart} className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">
+                        다시 시작하기
+                    </button>
+                    <Link to="/" className="px-6 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700">
+                        홈으로 돌아가기
+                    </Link>
+                </div>
             </div>
         </div>
     )
@@ -327,7 +357,6 @@ export default function Interview() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-gray-100 text-gray-800">
-        {/* Left Panel: Video and Controls */}
         <div className="w-full md:w-3/5 lg:w-2/3 p-4 flex flex-col">
             <div className="relative w-full flex-grow rounded-lg overflow-hidden shadow-lg bg-black">
                 <video
@@ -340,6 +369,12 @@ export default function Interview() {
                 <div className="absolute top-4 left-4 bg-black bg-opacity-50 p-3 rounded-lg text-white">
                     <p className="text-lg font-semibold">{isInterviewStarted ? questions[currentQuestionIndex] : "면접 대기 중..."}</p>
                 </div>
+                {isListening && (
+                    <div className="absolute bottom-4 right-4 flex items-center gap-2 bg-red-600 text-white py-1 px-3 rounded-full">
+                        <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                        <span>답변 녹음 중...</span>
+                    </div>
+                )}
             </div>
             <div className="flex-shrink-0 pt-4">
                 {!isInterviewStarted ? (
@@ -363,16 +398,15 @@ export default function Interview() {
                         </button>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-3 gap-4">
-                        <button onClick={startListening} disabled={isListening} className="px-4 py-3 bg-green-600 text-white rounded-lg font-semibold disabled:bg-green-400 disabled:cursor-not-allowed">답변 시작</button>
-                        <button onClick={stopListening} disabled={!isListening} className="px-4 py-3 bg-red-600 text-white rounded-lg font-semibold disabled:bg-red-400 disabled:cursor-not-allowed">답변 종료</button>
-                        <button onClick={handleNextQuestion} className="px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold">다음 질문</button>
+                    <div className="flex justify-center">
+                        <button onClick={handleNextQuestion} className="w-full max-w-xs px-6 py-3 bg-blue-600 text-white rounded-lg text-lg font-bold hover:bg-blue-700 transition-colors">
+                            {currentQuestionIndex === questions.length - 1 ? '결과 확인하기' : '다음 질문'}
+                        </button>
                     </div>
                 )}
             </div>
         </div>
 
-        {/* Right Panel: Answer Transcript */}
         <div className="w-full md:w-2/5 lg:w-1/3 p-4 flex flex-col" style={{ maxHeight: '100vh' }}>
             <div className="flex-grow border border-gray-300 rounded-lg p-4 bg-white shadow-inner flex flex-col min-h-0">
                 <h2 className="text-xl font-bold mb-4 text-gray-600 flex-shrink-0">실시간 답변</h2>
