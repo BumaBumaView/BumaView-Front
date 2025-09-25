@@ -46,8 +46,10 @@ export default function Interview() {
   // Device states
   const [videoDevices, setVideoDevices] = useState([]);
   const [audioDevices, setAudioDevices] = useState([]);
+  const [ttsVoices, setTtsVoices] = useState([]);
   const [selectedVideoDevice, setSelectedVideoDevice] = useState('');
   const [selectedAudioDevice, setSelectedAudioDevice] = useState('');
+  const [selectedTtsVoice, setSelectedTtsVoice] = useState('');
 
   const {
     currentQuestionIndex,
@@ -89,20 +91,13 @@ export default function Interview() {
     utterance.onend = () => {
       startListening(); // TTS가 끝나면 자동으로 STT 시작
     };
-    const setVoice = () => {
-      const voices = window.speechSynthesis.getVoices();
-      const koreanVoice = voices.find((voice) => voice.lang === "ko-KR");
-      if (koreanVoice) {
-        utterance.voice = koreanVoice;
-      }
-      window.speechSynthesis.speak(utterance);
-    };
 
-    if (window.speechSynthesis.getVoices().length === 0) {
-      window.speechSynthesis.onvoiceschanged = setVoice;
-    } else {
-      setVoice();
+    const voice = ttsVoices.find(v => v.name === selectedTtsVoice);
+    if (voice) {
+        utterance.voice = voice;
     }
+
+    window.speechSynthesis.speak(utterance);
   };
 
   const handleStartInterview = () => {
@@ -180,8 +175,24 @@ export default function Interview() {
     }
   };
 
+  const loadTtsVoices = () => {
+    const voices = window.speechSynthesis.getVoices();
+    const koreanVoices = voices.filter(voice => voice.lang === 'ko-KR');
+    setTtsVoices(koreanVoices);
+    if (koreanVoices.length > 0 && !selectedTtsVoice) {
+      setSelectedTtsVoice(koreanVoices[0].name);
+    }
+  };
+
   useEffect(() => {
     getDevices();
+
+    // Load voices
+    loadTtsVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadTtsVoices;
+    }
+
     async function initFaceLandmarker() {
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
@@ -379,21 +390,27 @@ export default function Interview() {
             <div className="flex-shrink-0 pt-4">
                 {!isInterviewStarted ? (
                     <div className="flex flex-col items-center gap-4">
-                        <div className="flex gap-4 w-full max-w-md">
-                            <div className="flex-1">
+                        <div className="flex flex-wrap gap-4 w-full max-w-md justify-center">
+                            <div className="flex-1 min-w-[150px]">
                                 <label htmlFor="video-device" className="block text-sm font-medium mb-1">카메라</label>
                                 <select id="video-device" value={selectedVideoDevice} onChange={e => setSelectedVideoDevice(e.target.value)} className="bg-white border border-gray-300 rounded-md px-3 py-2 w-full text-gray-800">
                                     {videoDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
                                 </select>
                             </div>
-                            <div className="flex-1">
+                            <div className="flex-1 min-w-[150px]">
                                 <label htmlFor="audio-device" className="block text-sm font-medium mb-1">마이크</label>
                                 <select id="audio-device" value={selectedAudioDevice} onChange={e => setSelectedAudioDevice(e.target.value)} className="bg-white border border-gray-300 rounded-md px-3 py-2 w-full text-gray-800">
                                     {audioDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
                                 </select>
                             </div>
+                            <div className="w-full max-w-md">
+                                <label htmlFor="tts-voice" className="block text-sm font-medium mb-1">목소리 선택</label>
+                                <select id="tts-voice" value={selectedTtsVoice} onChange={e => setSelectedTtsVoice(e.target.value)} className="bg-white border border-gray-300 rounded-md px-3 py-2 w-full text-gray-800">
+                                    {ttsVoices.map(voice => <option key={voice.name} value={voice.name}>{voice.name}</option>)}
+                                </select>
+                            </div>
                         </div>
-                        <button onClick={handleStartInterview} className="w-full max-w-xs px-6 py-3 bg-blue-600 text-white rounded-lg text-lg font-bold hover:bg-blue-700 transition-colors">
+                        <button onClick={handleStartInterview} className="w-full max-w-xs px-6 py-3 bg-blue-600 text-white rounded-lg text-lg font-bold hover:bg-blue-700 transition-colors mt-4">
                             면접 시작
                         </button>
                     </div>
