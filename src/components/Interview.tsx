@@ -27,8 +27,8 @@ if (SpeechRecognition) {
 export default function Interview() {
   const videoRef = useRef(null);
   const blendshapesCollector = useRef([]);
+  const finalTranscriptRef = useRef(''); // STT 최종 텍스트 Ref
   const [faceLandmarker, setFaceLandmarker] = useState(null);
-  const [blendshapes, setBlendshapes] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isInterviewStarted, setIsInterviewStarted] = useState(false);
   const [isInterviewFinished, setIsInterviewFinished] = useState(false);
@@ -36,6 +36,13 @@ export default function Interview() {
   const [userAnswer, setUserAnswer] = useState("");
   const [allAnswers, setAllAnswers] = useState([]);
   const [finalScores, setFinalScores] = useState(null);
+
+  // Device states
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [selectedVideoDevice, setSelectedVideoDevice] = useState('');
+  const [selectedAudioDevice, setSelectedAudioDevice] = useState('');
+
 
   // TTS 설정
   const speak = (text) => {
@@ -92,12 +99,13 @@ export default function Interview() {
     stopListening();
     const newAnswer = {
         question: questions[currentQuestionIndex],
-        answer: userAnswer,
+        answer: finalTranscriptRef.current, // 최종본은 Ref에서 가져옴
         blendshapes: blendshapesCollector.current
     };
     const updatedAnswers = [...allAnswers, newAnswer];
     setAllAnswers(updatedAnswers);
-    setUserAnswer("");
+    setUserAnswer(""); // UI 표시용 상태 초기화
+    finalTranscriptRef.current = ""; // Ref 초기화
     blendshapesCollector.current = [];
 
     const nextIndex = currentQuestionIndex + 1;
@@ -115,6 +123,9 @@ export default function Interview() {
         alert("브라우저가 음성 인식을 지원하지 않습니다.");
         return;
     }
+    // 답변 시작 시 모든 관련 상태 초기화
+    setUserAnswer("");
+    finalTranscriptRef.current = "";
     blendshapesCollector.current = [];
     setIsListening(true);
     recognition.start();
@@ -126,20 +137,58 @@ export default function Interview() {
     recognition.stop();
   };
 
+  // Get media devices
+  const getDevices = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); // Request permission
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter(device => device.kind === 'videoinput');
+      const audioInputs = devices.filter(device => device.kind === 'audioinput');
+      setVideoDevices(videoInputs);
+      setAudioDevices(audioInputs);
+      if (videoInputs.length > 0 && !selectedVideoDevice) {
+        setSelectedVideoDevice(videoInputs[0].deviceId);
+      }
+      if (audioInputs.length > 0 && !selectedAudioDevice) {
+        setSelectedAudioDevice(audioInputs[0].deviceId);
+      }
+    } catch (err) {
+      console.error("Error enumerating devices:", err);
+    }
+  };
+
+  useEffect(() => {
+    getDevices();
+    async function initFaceLandmarker() {
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
+      );
+      const landmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+        },
+        outputFaceBlendshapes: true,
+        runningMode: "VIDEO",
+      });
+      setFaceLandmarker(landmarker);
+    }
+    initFaceLandmarker();
+  }, []);
+
   useEffect(() => {
     if (!recognition) return;
 
-    let finalTranscript = '';
     recognition.onresult = (event) => {
       let interimTranscript = "";
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript + ' ';
+          finalTranscriptRef.current += event.results[i][0].transcript + ' ';
         } else {
           interimTranscript += event.results[i][0].transcript;
         }
       }
-      setUserAnswer(finalTranscript + interimTranscript);
+      setUserAnswer(finalTranscriptRef.current + interimTranscript);
     };
 
     recognition.onend = () => {
@@ -159,36 +208,37 @@ export default function Interview() {
 
 
   useEffect(() => {
-    async function initFaceLandmarker() {
-      const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
-      );
-      const faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
-        },
-        outputFaceBlendshapes: true,
-        runningMode: "VIDEO",
-      });
-      setFaceLandmarker(faceLandmarker);
-    }
-
-    initFaceLandmarker();
-  }, []);
-
-  useEffect(() => {
-    if (!faceLandmarker) return;
+    if (!faceLandmarker || !selectedVideoDevice) return;
 
     const video = videoRef.current;
+    let stream;
     let animationFrameId;
 
-    async function enableCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
-      await video.play();
+    async function setupCamera() {
+      // 이전에 사용하던 스트림이 있으면 중지
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+      }
 
-      processVideo();
+      const constraints = {
+        video: {
+          deviceId: selectedVideoDevice ? { exact: selectedVideoDevice } : undefined,
+        },
+        audio: {
+          deviceId: selectedAudioDevice ? { exact: selectedAudioDevice } : undefined,
+        }
+      };
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          video.play();
+          processVideo();
+        };
+      } catch (err) {
+        console.error("Error setting up camera:", err);
+      }
     }
 
     const processVideo = () => {
@@ -196,22 +246,23 @@ export default function Interview() {
           const nowInMs = Date.now();
           const results = faceLandmarker.detectForVideo(video, nowInMs);
           if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
-            const currentBlendshapes = results.faceBlendshapes[0].categories;
-            setBlendshapes(currentBlendshapes);
             if (isListening) {
-                blendshapesCollector.current.push(currentBlendshapes);
+                blendshapesCollector.current.push(results.faceBlendshapes[0].categories);
             }
           }
         }
         animationFrameId = requestAnimationFrame(processVideo);
       };
 
-    enableCamera();
+    setupCamera();
 
     return () => {
         cancelAnimationFrame(animationFrameId);
+        if (video.srcObject) {
+            video.srcObject.getTracks().forEach(track => track.stop());
+        }
     }
-  }, [faceLandmarker, isListening]);
+  }, [faceLandmarker, selectedVideoDevice, selectedAudioDevice, isListening]);
 
   if (isInterviewFinished && finalScores) {
     return (
@@ -251,84 +302,61 @@ export default function Interview() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 h-screen">
-      <div className="flex flex-col md:flex-row gap-4 flex-grow min-h-0">
-        <div className="w-full md:w-1/2 flex flex-col gap-4">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full border rounded-lg aspect-video bg-black"
-          />
-          <div className="flex-grow border rounded-lg p-4 bg-gray-50 flex flex-col">
-            <h2 className="text-xl font-bold mb-2 flex-shrink-0">답변 내용</h2>
-            <div className="text-lg overflow-y-auto flex-grow">
-              {userAnswer || "음성 인식을 시작하거나 다음 질문으로 넘어가세요."}
-            </div>
-          </div>
-        </div>
-        <div className="w-full md:w-1/2 flex flex-col gap-4">
-           <div className="h-1/2 border rounded-lg p-4 bg-gray-50">
-            <h2 className="text-xl font-bold mb-2">면접 질문</h2>
-            <p className="text-lg">
-              {isInterviewStarted
-                ? questions[currentQuestionIndex]
-                : "면접 시작 버튼을 눌러주세요."}
-            </p>
-          </div>
-          <div className="h-1/2 overflow-y-scroll border rounded-lg p-2 font-mono text-sm">
-            <h2 className="text-lg font-bold p-2">표정 분석 결과</h2>
-            {blendshapes.length > 0 ? (
-              blendshapes.map((b, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="w-40 truncate">{b.categoryName}</span>
-                  <span className="w-16">{b.score.toFixed(4)}</span>
-                  <div
-                    className="bg-teal-600 h-4 rounded"
-                    style={{ width: `${b.score * 200}px` }}
-                  />
+    <div className="flex flex-col md:flex-row h-screen bg-gray-900 text-white">
+        {/* Left Panel: Video and Controls */}
+        <div className="w-full md:w-3/5 lg:w-2/3 p-4 flex flex-col">
+            <div className="relative w-full flex-grow rounded-lg overflow-hidden">
+                <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                />
+                <div className="absolute top-4 left-4 bg-black bg-opacity-50 p-2 rounded-lg">
+                    <p className="text-lg font-semibold">{isInterviewStarted ? questions[currentQuestionIndex] : "면접 대기 중..."}</p>
                 </div>
-              ))
-            ) : (
-              <p>분석 데이터가 없습니다.</p>
-            )}
-          </div>
+            </div>
+            <div className="flex-shrink-0 pt-4">
+                {!isInterviewStarted ? (
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="flex gap-4">
+                            <div>
+                                <label htmlFor="video-device" className="block text-sm font-medium mb-1">카메라</label>
+                                <select id="video-device" value={selectedVideoDevice} onChange={e => setSelectedVideoDevice(e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-2 w-full">
+                                    {videoDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label htmlFor="audio-device" className="block text-sm font-medium mb-1">마이크</label>
+                                <select id="audio-device" value={selectedAudioDevice} onChange={e => setSelectedAudioDevice(e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-2 w-full">
+                                    {audioDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <button onClick={handleStartInterview} className="w-full max-w-xs px-6 py-3 bg-blue-600 rounded-lg text-lg font-bold hover:bg-blue-700 transition-colors">
+                            면접 시작
+                        </button>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-3 gap-4">
+                        <button onClick={startListening} disabled={isListening} className="px-4 py-3 bg-green-600 rounded-lg disabled:bg-green-400 disabled:cursor-not-allowed">답변 시작</button>
+                        <button onClick={stopListening} disabled={!isListening} className="px-4 py-3 bg-red-600 rounded-lg disabled:bg-red-400 disabled:cursor-not-allowed">답변 종료</button>
+                        <button onClick={handleNextQuestion} className="px-4 py-3 bg-blue-600 rounded-lg">다음 질문</button>
+                    </div>
+                )}
+            </div>
         </div>
-      </div>
-      <div className="flex-shrink-0">
-        {!isInterviewStarted ? (
-          <button
-            onClick={handleStartInterview}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            면접 시작
-          </button>
-        ) : (
-          <div className="grid grid-cols-3 gap-4">
-            <button
-              onClick={startListening}
-              disabled={isListening}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:bg-green-400"
-            >
-              답변 시작
-            </button>
-            <button
-              onClick={stopListening}
-              disabled={!isListening}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg disabled:bg-red-400"
-            >
-              답변 종료
-            </button>
-            <button
-              onClick={handleNextQuestion}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg"
-            >
-              다음 질문
-            </button>
-          </div>
-        )}
-      </div>
+
+        {/* Right Panel: Answer Transcript */}
+        <div className="w-full md:w-2/5 lg:w-1/3 p-4 bg-gray-800 flex flex-col">
+            <div className="flex-grow border border-gray-700 rounded-lg p-4 bg-gray-900">
+                <h2 className="text-xl font-bold mb-4 text-gray-400">실시간 답변</h2>
+                <div className="text-lg text-gray-200 h-full overflow-y-auto">
+                    {userAnswer || "이곳에 답변이 실시간으로 표시됩니다."}
+                </div>
+            </div>
+        </div>
     </div>
   );
 }
