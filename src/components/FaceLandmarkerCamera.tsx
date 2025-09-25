@@ -2,9 +2,9 @@ import React, { useEffect, useRef } from "react";
 import {
   FaceLandmarker,
   FilesetResolver,
-  FaceLandmarkerResult,
   DrawingUtils
 } from "@mediapipe/tasks-vision";
+import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 
 interface FaceLandmarkerCameraProps {
   onResults: (results: FaceLandmarkerResult) => void;

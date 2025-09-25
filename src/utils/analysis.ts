@@ -1,4 +1,4 @@
-import { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
+import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 
 export interface AnalysisResult {
   gaze: {

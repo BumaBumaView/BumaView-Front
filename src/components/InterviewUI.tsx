@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaceLandmarkerResult } from '@mediapipe/tasks-vision';
+import type { FaceLandmarkerResult } from '@mediapipe/tasks-vision';
 import { AnalysisResult } from '../utils/analysis';
 import FaceLandmarkerCamera from './FaceLandmarkerCamera';
 

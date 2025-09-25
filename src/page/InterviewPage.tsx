@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import InterviewUI from '../components/InterviewUI';
-import { FaceLandmarkerResult } from '@mediapipe/tasks-vision';
+import type { FaceLandmarkerResult } from '@mediapipe/tasks-vision';
 import { analyze, AnalysisResult } from '../utils/analysis';
 import { useSpeech } from '../stores/useSpeech';
 
