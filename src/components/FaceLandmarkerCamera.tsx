@@ -1,85 +1,99 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   FaceLandmarker,
-  FilesetResolver
+  FilesetResolver,
+  FaceLandmarkerResult,
+  DrawingUtils
 } from "@mediapipe/tasks-vision";
 
-export default function FaceLandmarkerCamera() {
-  const videoRef = useRef(null);
-  const [faceLandmarker, setFaceLandmarker] = useState(null);
-  const [blendshapes, setBlendshapes] = useState([]);
+interface FaceLandmarkerCameraProps {
+  onResults: (results: FaceLandmarkerResult) => void;
+}
+
+export default function FaceLandmarkerCamera({ onResults }: FaceLandmarkerCameraProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    async function initFaceLandmarker() {
+    let faceLandmarker: FaceLandmarker;
+    let animationFrameId: number;
+
+    async function init() {
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
       );
-      const faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+      faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath:
             "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
         },
         outputFaceBlendshapes: true,
+        outputFaceLandmarks: true,
         runningMode: "VIDEO",
       });
-      setFaceLandmarker(faceLandmarker);
+
+      await enableCamera();
     }
-
-    initFaceLandmarker();
-  }, []);
-
-  useEffect(() => {
-    if (!faceLandmarker) return;
-
-    const video = videoRef.current;
 
     async function enableCamera() {
+      const video = videoRef.current;
+      if (!video) return;
+
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       video.srcObject = stream;
-      await video.play();
-
-      const processVideo = async () => {
-        if (video.readyState >= 2) {
-          const nowInMs = Date.now();
-          const results = await faceLandmarker.detectForVideo(video, nowInMs);
-          if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
-            setBlendshapes(results.faceBlendshapes[0].categories);
-          }
-        }
-        requestAnimationFrame(processVideo);
-      };
-
-      processVideo();
+      video.addEventListener("loadeddata", processVideo);
     }
 
-    enableCamera();
-  }, [faceLandmarker]);
+    function processVideo() {
+      const video = videoRef.current;
+      if (!video || !faceLandmarker) return;
+
+      const nowInMs = Date.now();
+      const results = faceLandmarker.detectForVideo(video, nowInMs);
+      onResults(results);
+
+      const canvas = canvasRef.current;
+      const canvasCtx = canvas?.getContext("2d");
+      if (canvasCtx && canvas) {
+        const drawingUtils = new DrawingUtils(canvasCtx);
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (results.faceLandmarks) {
+          for (const landmarks of results.faceLandmarks) {
+            drawingUtils.drawConnectors(
+              landmarks,
+              FaceLandmarker.FACE_LANDMARKS_TESSELATION,
+              { color: "#C0C0C070", lineWidth: 1 }
+            );
+          }
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(processVideo);
+    }
+
+    init();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      const stream = videoRef.current?.srcObject as MediaStream;
+      stream?.getTracks().forEach(track => track.stop());
+    };
+  }, [onResults]);
 
   return (
-    <div className="flex flex-col md:flex-row gap-4 p-4">
+    <div className="relative w-full h-[480px]">
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
-        className="w-full md:w-1/2 border rounded-lg"
+        className="w-full h-full border rounded-lg"
       />
-      <div className="w-full md:w-1/2 h-[480px] overflow-y-scroll border rounded-lg p-2 font-mono text-sm">
-        {blendshapes.length > 0 ? (
-          blendshapes.map((b, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="w-40">{b.categoryName}</span>
-              <span className="w-16">{b.score.toFixed(4)}</span>
-              <div
-                className="bg-teal-600 h-4"
-                style={{ width: `${b.score * 200}px` }}
-              />
-            </div>
-          ))
-        ) : (
-          <p>No results yet</p>
-        )}
-      </div>
+      <canvas
+        ref={canvasRef}
+        className="absolute top-0 left-0 w-full h-full"
+      />
     </div>
   );
 }
