@@ -274,24 +274,48 @@ export default function Interview() {
                 <div className="mb-8 p-6 bg-blue-50 rounded-lg text-center">
                     <h2 className="text-xl font-semibold mb-2 text-blue-800">최종 점수</h2>
                     <p className="text-5xl font-bold text-blue-600">{finalScores.finalScore}점</p>
-                    <div className="flex justify-center gap-4 sm:gap-8 mt-4">
-                        <p><strong>집중도:</strong> {finalScores.attention}점</p>
-                        <p><strong>안정감:</strong> {finalScores.stability}점</p>
-                        <p><strong>긍정성:</strong> {finalScores.positivity}점</p>
+                    <div className="flex justify-around gap-4 sm:gap-8 mt-6">
+                        <div>
+                            <p className="font-bold text-lg">{finalScores.attention}점</p>
+                            <p className="text-sm text-gray-600">집중도</p>
+                        </div>
+                        <div>
+                            <p className="font-bold text-lg">{finalScores.stability}점</p>
+                            <p className="text-sm text-gray-600">안정감</p>
+                        </div>
+                        <div>
+                            <p className="font-bold text-lg">{finalScores.positivity}점</p>
+                            <p className="text-sm text-gray-600">긍정성</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mb-8 space-y-4">
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                        <h3 className="font-bold text-gray-800">집중도 (Attention)</h3>
+                        <p className="text-sm text-gray-600">면접관에게 시선을 잘 고정하고 있는지, 혹은 주변을 두리번거리는지를 측정합니다. 높은 점수는 면접에 몰입하고 있다는 인상을 줍니다.</p>
+                    </div>
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                        <h3 className="font-bold text-gray-800">안정감 (Stability)</h3>
+                        <p className="text-sm text-gray-600">답변 시 표정이 얼마나 안정적인지를 측정합니다. 불필요한 입 움직임, 과도한 인상 찡그림 등은 긴장감을 나타낼 수 있습니다.</p>
+                    </div>
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                        <h3 className="font-bold text-gray-800">긍정성 (Positivity)</h3>
+                        <p className="text-sm text-gray-600">자연스러운 미소와 밝은 표정을 통해 얼마나 긍정적인 인상을 주는지를 측정합니다. 자신감과 친화력을 어필할 수 있습니다.</p>
                     </div>
                 </div>
 
                 <h2 className="text-2xl font-bold mb-4 text-gray-700">질문별 답변 및 분석</h2>
                 <div className="space-y-6">
                     {allAnswers.map((item, index) => (
-                        <div key={index} className="border border-gray-200 p-4 rounded-lg bg-gray-50">
+                        <div key={index} className="border border-gray-200 p-4 rounded-lg bg-white shadow-sm">
                             <p className="font-bold text-lg text-gray-800 mb-2">{index + 1}. {item.question}</p>
-                            <p className="text-gray-700 mb-3">"{item.answer || "답변 없음"}"</p>
-                            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
+                            <p className="text-gray-700 mb-3 italic">"{item.answer || "답변 없음"}"</p>
+                            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600 border-t pt-3 mt-3">
                                 <span><strong>집중도:</strong> {item.scores.attention}점</span>
                                 <span><strong>안정감:</strong> {item.scores.stability}점</span>
                                 <span><strong>긍정성:</strong> {item.scores.positivity}점</span>
-                                <span className="font-semibold text-indigo-600">질문 점수: {item.scores.finalScore}점</span>
+                                <span className="font-semibold text-indigo-600 ml-auto">질문 점수: {item.scores.finalScore}점</span>
                             </div>
                         </div>
                     ))}
@@ -305,7 +329,7 @@ export default function Interview() {
     <div className="flex flex-col md:flex-row h-screen bg-gray-900 text-white">
         {/* Left Panel: Video and Controls */}
         <div className="w-full md:w-3/5 lg:w-2/3 p-4 flex flex-col">
-            <div className="relative w-full flex-grow rounded-lg overflow-hidden">
+            <div className="relative w-full flex-grow rounded-lg overflow-hidden shadow-lg">
                 <video
                     ref={videoRef}
                     autoPlay
@@ -313,21 +337,21 @@ export default function Interview() {
                     muted
                     className="w-full h-full object-cover"
                 />
-                <div className="absolute top-4 left-4 bg-black bg-opacity-50 p-2 rounded-lg">
+                <div className="absolute top-4 left-4 bg-black bg-opacity-60 p-3 rounded-lg">
                     <p className="text-lg font-semibold">{isInterviewStarted ? questions[currentQuestionIndex] : "면접 대기 중..."}</p>
                 </div>
             </div>
             <div className="flex-shrink-0 pt-4">
                 {!isInterviewStarted ? (
                     <div className="flex flex-col items-center gap-4">
-                        <div className="flex gap-4">
-                            <div>
+                        <div className="flex gap-4 w-full max-w-md">
+                            <div className="flex-1">
                                 <label htmlFor="video-device" className="block text-sm font-medium mb-1">카메라</label>
                                 <select id="video-device" value={selectedVideoDevice} onChange={e => setSelectedVideoDevice(e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-2 w-full">
                                     {videoDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
                                 </select>
                             </div>
-                            <div>
+                            <div className="flex-1">
                                 <label htmlFor="audio-device" className="block text-sm font-medium mb-1">마이크</label>
                                 <select id="audio-device" value={selectedAudioDevice} onChange={e => setSelectedAudioDevice(e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-2 w-full">
                                     {audioDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
@@ -340,9 +364,9 @@ export default function Interview() {
                     </div>
                 ) : (
                     <div className="grid grid-cols-3 gap-4">
-                        <button onClick={startListening} disabled={isListening} className="px-4 py-3 bg-green-600 rounded-lg disabled:bg-green-400 disabled:cursor-not-allowed">답변 시작</button>
-                        <button onClick={stopListening} disabled={!isListening} className="px-4 py-3 bg-red-600 rounded-lg disabled:bg-red-400 disabled:cursor-not-allowed">답변 종료</button>
-                        <button onClick={handleNextQuestion} className="px-4 py-3 bg-blue-600 rounded-lg">다음 질문</button>
+                        <button onClick={startListening} disabled={isListening} className="px-4 py-3 bg-green-600 rounded-lg font-semibold disabled:bg-green-800 disabled:cursor-not-allowed">답변 시작</button>
+                        <button onClick={stopListening} disabled={!isListening} className="px-4 py-3 bg-red-600 rounded-lg font-semibold disabled:bg-red-800 disabled:cursor-not-allowed">답변 종료</button>
+                        <button onClick={handleNextQuestion} className="px-4 py-3 bg-blue-600 rounded-lg font-semibold">다음 질문</button>
                     </div>
                 )}
             </div>
@@ -350,9 +374,9 @@ export default function Interview() {
 
         {/* Right Panel: Answer Transcript */}
         <div className="w-full md:w-2/5 lg:w-1/3 p-4 bg-gray-800 flex flex-col">
-            <div className="flex-grow border border-gray-700 rounded-lg p-4 bg-gray-900">
+            <div className="flex-grow border border-gray-700 rounded-lg p-4 bg-gray-900 shadow-inner">
                 <h2 className="text-xl font-bold mb-4 text-gray-400">실시간 답변</h2>
-                <div className="text-lg text-gray-200 h-full overflow-y-auto">
+                <div className="text-lg text-gray-200 h-full overflow-y-auto leading-relaxed">
                     {userAnswer || "이곳에 답변이 실시간으로 표시됩니다."}
                 </div>
             </div>

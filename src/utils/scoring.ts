@@ -1,44 +1,45 @@
 // @ts-nocheck
 // 타입 정의가 복잡하므로 임시로 타입 체크를 비활성화합니다.
 
-// 각 Blendshape 카테고리에 대한 가중치 및 임계값 정의
+// 각 Blendshape 카테고리에 대한 가중치 및 임계값 정의 (점수 하향 조정)
 const SCORE_WEIGHTS = {
-  // 집중도 (시선 분산)
-  eyeLookOutLeft: 1.0,
-  eyeLookOutRight: 1.0,
-  eyeLookUpLeft: 0.5,
-  eyeLookUpRight: 0.5,
-  eyeLookDownLeft: 0.5,
-  eyeLookDownRight: 0.5,
+  // 집중도 (시선 분산) - 페널티 강화
+  eyeLookOutLeft: 1.5,
+  eyeLookOutRight: 1.5,
+  eyeLookUpLeft: 0.8,
+  eyeLookUpRight: 0.8,
+  eyeLookDownLeft: 0.7,
+  eyeLookDownRight: 0.7,
 
-  // 안정감 (불안/긴장)
-  jawOpen: 0.3,
-  mouthShrugUpper: 0.5,
-  mouthShrugLower: 0.5,
-  browDownLeft: 0.4,
-  browDownRight: 0.4,
-  jawLeft: 0.2,
-  jawRight: 0.2,
+  // 안정감 (불안/긴장) - 페널티 강화
+  jawOpen: 0.5,
+  mouthShrugUpper: 0.7,
+  mouthShrugLower: 0.7,
+  browDownLeft: 0.6,
+  browDownRight: 0.6,
+  jawLeft: 0.4,
+  jawRight: 0.4,
+  cheekPuff: 0.5, // 볼 부풀리기 추가
 
-  // 긍정성
-  mouthSmileLeft: 1.5,
-  mouthSmileRight: 1.5,
-  mouthFrownLeft: -1.0,
-  mouthFrownRight: -1.0,
-  mouthDimpleLeft: 0.5,
-  mouthDimpleRight: 0.5,
+  // 긍정성 - 가중치 미세 조정
+  mouthSmileLeft: 1.2,
+  mouthSmileRight: 1.2,
+  mouthFrownLeft: -1.5, // 찡그림 페널티 강화
+  mouthFrownRight: -1.5,
+  mouthDimpleLeft: 0.4,
+  mouthDimpleRight: 0.4,
 };
 
-const ATTENTION_THRESHOLD = 0.3; // 집중도 이탈로 간주할 임계값
+const ATTENTION_THRESHOLD = 0.25; // 집중도 이탈로 간주할 임계값 하향 조정
 
 // Blendshapes 데이터를 분석하여 점수를 계산하는 함수
 export const calculateScores = (blendshapesData) => {
   if (!blendshapesData || blendshapesData.length === 0) {
     return {
-      attention: 100,
-      stability: 100,
-      positivity: 0,
-      finalScore: 67, // 기본 점수
+      attention: 80, // 데이터 없을 시 기본 점수 하향
+      stability: 80,
+      positivity: 50,
+      finalScore: 70,
     };
   }
 
@@ -79,8 +80,7 @@ export const calculateScores = (blendshapesData) => {
   for (const key in attentionDistractionFrames) {
     totalDistractionRatio += (attentionDistractionFrames[key] / frameCount) * SCORE_WEIGHTS[key];
   }
-  // 비율이므로 100을 곱하고, 최대 100점을 넘지 않도록 함
-  let attentionScore = Math.max(0, 100 - totalDistractionRatio * 100);
+  let attentionScore = Math.max(0, 100 - totalDistractionRatio * 120); // 페널티 비율 증폭
 
 
   // 2. 안정감 점수 계산
@@ -90,21 +90,19 @@ export const calculateScores = (blendshapesData) => {
   stabilityPenalty += (averageScores['mouthShrugLower'] || 0) * SCORE_WEIGHTS['mouthShrugLower'];
   stabilityPenalty += (averageScores['browDownLeft'] || 0) * SCORE_WEIGHTS['browDownLeft'];
   stabilityPenalty += (averageScores['browDownRight'] || 0) * SCORE_WEIGHTS['browDownRight'];
-  let stabilityScore = Math.max(0, 100 - stabilityPenalty * 100);
+  stabilityPenalty += (averageScores['cheekPuff'] || 0) * SCORE_WEIGHTS['cheekPuff'];
+  let stabilityScore = Math.max(0, 100 - stabilityPenalty * 150); // 페널티 비율 증폭
 
   // 3. 긍정성 점수 계산
-  let positivityScore = 0;
-  positivityScore += (averageScores['mouthSmileLeft'] || 0) * SCORE_WEIGHTS['mouthSmileLeft'];
-  positivityScore += (averageScores['mouthSmileRight'] || 0) * SCORE_WEIGHTS['mouthSmileRight'];
-  positivityScore += (averageScores['mouthFrownLeft'] || 0) * SCORE_WEIGHTS['mouthFrownLeft'];
-  positivityScore += (averageScores['mouthFrownRight'] || 0) * SCORE_WEIGHTS['mouthFrownRight'];
-  positivityScore += (averageScores['mouthDimpleLeft'] || 0) * SCORE_WEIGHTS['mouthDimpleLeft'];
-  positivityScore += (averageScores['mouthDimpleRight'] || 0) * SCORE_WEIGHTS['mouthDimpleRight'];
-  // 0~100 사이 값으로 조정
-  positivityScore = Math.max(0, Math.min(100, positivityScore * 100));
+  let positivityScore = 50; // 기본 점수 50점에서 시작
+  positivityScore += ((averageScores['mouthSmileLeft'] || 0) + (averageScores['mouthSmileRight'] || 0)) * SCORE_WEIGHTS['mouthSmileLeft'] * 50;
+  positivityScore += ((averageScores['mouthFrownLeft'] || 0) + (averageScores['mouthFrownRight'] || 0)) * SCORE_WEIGHTS['mouthFrownLeft'] * 50;
+  positivityScore += ((averageScores['mouthDimpleLeft'] || 0) + (averageScores['mouthDimpleRight'] || 0)) * SCORE_WEIGHTS['mouthDimpleLeft'] * 20;
 
-  // 최종 점수 계산 (가중 평균)
-  const finalScore = attentionScore * 0.4 + stabilityScore * 0.4 + positivityScore * 0.2;
+  positivityScore = Math.max(0, Math.min(100, positivityScore));
+
+  // 최종 점수 계산 (가중 평균 변경: 집중도/안정감 45%, 긍정성 10%)
+  const finalScore = attentionScore * 0.45 + stabilityScore * 0.45 + positivityScore * 0.1;
 
   return {
     attention: Math.round(attentionScore),
