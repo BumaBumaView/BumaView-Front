@@ -1,9 +1,9 @@
-import FaceLandmarkerCamera from "../components/FaceLandmarkerCamera"
+import Interview from "../components/Interview"
 
 const InterviewPage = () => {
   return (
     <>
-      <FaceLandmarkerCamera />
+      <Interview />
     </>
   )
 }
