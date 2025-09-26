@@ -65,13 +65,17 @@ export default function Interview() {
     finalScores,
   } = interviewState;
 
+  // isListening 상태가 변경될 때마다 Ref도 업데이트
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
   // STT 제어
   const startListening = () => {
     if (!recognition) {
         alert("브라우저가 음성 인식을 지원하지 않습니다.");
         return;
     }
-    isListeningRef.current = true; // Ref 즉시 업데이트
     setInterviewState(prev => ({ ...prev, userAnswer: "", isListening: true }));
     finalTranscriptRef.current = "";
     blendshapesCollector.current = [];
@@ -80,7 +84,6 @@ export default function Interview() {
 
   const stopListening = () => {
     if (!recognition) return;
-    isListeningRef.current = false; // Ref 즉시 업데이트
     setInterviewState(prev => ({...prev, isListening: false}));
     recognition.stop();
   };
@@ -144,7 +147,7 @@ export default function Interview() {
       const newAnswer = {
           question: questions[prev.currentQuestionIndex],
           answer: finalTranscriptRef.current,
-          blendshapes: [...blendshapesCollector.current] // Create a shallow copy
+          blendshapes: [...blendshapesCollector.current]
       };
       const updatedAnswers = [...prev.allAnswers, newAnswer];
 
@@ -291,7 +294,8 @@ export default function Interview() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
-        video.addEventListener("loadeddata", processVideo);
+        await video.play();
+        processVideo();
       } catch (err) {
         console.error("Error setting up camera:", err);
       }
