@@ -39,7 +39,9 @@ if (SpeechRecognition) {
 export default function Interview() {
   const videoRef = useRef(null);
   const blendshapesCollector = useRef([]);
-  const finalTranscriptRef = useRef(''); // STT 최종 텍스트 Ref
+  const finalTranscriptRef = useRef('');
+  const isListeningRef = useRef(false);
+
   const [faceLandmarker, setFaceLandmarker] = useState(null);
   const [interviewState, setInterviewState] = useState(initialState);
 
@@ -61,9 +63,10 @@ export default function Interview() {
     finalScores,
   } = interviewState;
 
-  const setState = (newState) => {
-    setInterviewState(prev => ({ ...prev, ...newState }));
-  };
+  // isListening 상태가 변경될 때마다 Ref도 업데이트
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
 
   // STT 제어
   const startListening = () => {
@@ -71,16 +74,15 @@ export default function Interview() {
         alert("브라우저가 음성 인식을 지원하지 않습니다.");
         return;
     }
-    setState({ userAnswer: "" });
+    setInterviewState(prev => ({ ...prev, userAnswer: "", isListening: true }));
     finalTranscriptRef.current = "";
     blendshapesCollector.current = [];
-    setState({ isListening: true });
     recognition.start();
   };
 
   const stopListening = () => {
     if (!recognition) return;
-    setState({ isListening: false });
+    setInterviewState(prev => ({...prev, isListening: false}));
     recognition.stop();
   };
 
@@ -89,7 +91,7 @@ export default function Interview() {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.onend = () => {
-      startListening(); // TTS가 끝나면 자동으로 STT 시작
+      startListening();
     };
 
     const voice = ttsVoices.find(v => v.name === selectedTtsVoice);
@@ -101,7 +103,7 @@ export default function Interview() {
   };
 
   const handleStartInterview = () => {
-    setState({ isInterviewStarted: true });
+    setInterviewState(prev => ({ ...prev, isInterviewStarted: true }));
     speak(questions[currentQuestionIndex]);
   };
 
@@ -126,28 +128,43 @@ export default function Interview() {
       finalScore: Math.round(totalScores.finalScore / scoredAnswers.length),
     };
 
-    setState({ allAnswers: scoredAnswers, finalScores: averageScores, isInterviewFinished: true });
+    return { scoredAnswers, averageScores };
   }
 
   const handleNextQuestion = () => {
     stopListening();
-    const newAnswer = {
-        question: questions[currentQuestionIndex],
-        answer: finalTranscriptRef.current,
-        blendshapes: blendshapesCollector.current
-    };
-    const updatedAnswers = [...allAnswers, newAnswer];
-    setState({ allAnswers: updatedAnswers, userAnswer: "" });
-    finalTranscriptRef.current = "";
-    blendshapesCollector.current = [];
 
-    const nextIndex = currentQuestionIndex + 1;
-    if (nextIndex < questions.length) {
-      setState({ currentQuestionIndex: nextIndex });
-      speak(questions[nextIndex]);
-    } else {
-      processAndFinalizeInterview(updatedAnswers);
-    }
+    setInterviewState(prev => {
+      const newAnswer = {
+          question: questions[prev.currentQuestionIndex],
+          answer: finalTranscriptRef.current,
+          blendshapes: blendshapesCollector.current
+      };
+      const updatedAnswers = [...prev.allAnswers, newAnswer];
+
+      finalTranscriptRef.current = "";
+      blendshapesCollector.current = [];
+
+      const nextIndex = prev.currentQuestionIndex + 1;
+      if (nextIndex < questions.length) {
+        speak(questions[nextIndex]);
+        return {
+          ...prev,
+          allAnswers: updatedAnswers,
+          userAnswer: "",
+          currentQuestionIndex: nextIndex,
+        };
+      } else {
+        const { scoredAnswers, averageScores } = processAndFinalizeInterview(updatedAnswers);
+        return {
+          ...prev,
+          allAnswers: scoredAnswers,
+          finalScores: averageScores,
+          isInterviewFinished: true,
+          userAnswer: "",
+        };
+      }
+    });
   };
 
   const handleRestart = () => {
@@ -187,7 +204,6 @@ export default function Interview() {
   useEffect(() => {
     getDevices();
 
-    // Load voices
     loadTtsVoices();
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = loadTtsVoices;
@@ -222,11 +238,11 @@ export default function Interview() {
           interimTranscript += event.results[i][0].transcript;
         }
       }
-      setState({ userAnswer: finalTranscriptRef.current + interimTranscript });
+      setInterviewState(prev => ({...prev, userAnswer: finalTranscriptRef.current + interimTranscript }));
     };
 
     recognition.onend = () => {
-        if (isListening) {
+        if (isListeningRef.current) {
             recognition.start();
         }
     };
@@ -238,7 +254,7 @@ export default function Interview() {
         recognition.stop();
       }
     };
-  }, [isListening]);
+  }, []);
 
 
   useEffect(() => {
@@ -279,7 +295,7 @@ export default function Interview() {
           const nowInMs = Date.now();
           const results = faceLandmarker.detectForVideo(video, nowInMs);
           if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
-            if (isListening) {
+            if (isListeningRef.current) {
                 blendshapesCollector.current.push(results.faceBlendshapes[0].categories);
             }
           }
