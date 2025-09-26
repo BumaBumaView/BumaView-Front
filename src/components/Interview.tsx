@@ -7,6 +7,8 @@ import {
 } from "@mediapipe/tasks-vision";
 import { calculateScores } from "../utils/scoring";
 
+const DEBUG = true; // 디버그 모드 토글
+
 const questions = [
   "자기소개 부탁드립니다.",
   "우리 회사에 지원한 동기는 무엇인가요?",
@@ -68,6 +70,7 @@ export default function Interview() {
 
   // isListening 상태가 변경될 때마다 Ref도 업데이트
   useEffect(() => {
+    if (DEBUG) console.log(`[DEBUG] isListening state changed to: ${isListening}`);
     isListeningRef.current = isListening;
   }, [isListening]);
 
@@ -77,6 +80,7 @@ export default function Interview() {
         alert("브라우저가 음성 인식을 지원하지 않습니다.");
         return;
     }
+    if (DEBUG) console.log("[DEBUG] startListening called. Setting isListening to true.");
     setInterviewState(prev => ({ ...prev, userAnswer: "", isListening: true }));
     finalTranscriptRef.current = "";
     blendshapesCollector.current = [];
@@ -85,15 +89,18 @@ export default function Interview() {
 
   const stopListening = () => {
     if (!recognition) return;
+    if (DEBUG) console.log("[DEBUG] stopListening called. Setting isListening to false.");
     setInterviewState(prev => ({...prev, isListening: false}));
     recognition.stop();
   };
 
   // TTS 설정 및 STT 자동 시작
   const speak = (text) => {
+    if (DEBUG) console.log(`[DEBUG] speak called with text: "${text}"`);
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.onend = () => {
+      if (DEBUG) console.log("[DEBUG] TTS finished. Starting STT.");
       startListening();
     };
 
@@ -106,11 +113,13 @@ export default function Interview() {
   };
 
   const handleStartInterview = () => {
+    if (DEBUG) console.log("[DEBUG] handleStartInterview called.");
     setInterviewState(prev => ({ ...prev, isInterviewStarted: true }));
   };
 
   // 면접 시작 또는 질문 변경 시 TTS 실행
   useEffect(() => {
+    if (DEBUG) console.log(`[DEBUG] TTS useEffect triggered. isInterviewStarted: ${isInterviewStarted}, isInterviewFinished: ${isInterviewFinished}, currentQuestionIndex: ${currentQuestionIndex}`);
     if (isInterviewStarted && !isInterviewFinished) {
       speak(questions[currentQuestionIndex]);
     }
@@ -118,9 +127,10 @@ export default function Interview() {
 
 
   const processAndFinalizeInterview = (answers) => {
+    if (DEBUG) console.log("[DEBUG] processAndFinalizeInterview called with answers:", answers);
     const scoredAnswers = answers.map(item => ({
       ...item,
-      scores: calculateScores(item.blendshapes)
+      scores: calculateScores(item.blendshapes, DEBUG)
     }));
 
     const totalScores = scoredAnswers.reduce((acc, item) => {
@@ -142,6 +152,7 @@ export default function Interview() {
   }
 
   const handleNextQuestion = () => {
+    if (DEBUG) console.log("[DEBUG] handleNextQuestion called.");
     stopListening();
 
     setInterviewState(prev => {
@@ -150,6 +161,7 @@ export default function Interview() {
           answer: finalTranscriptRef.current,
           blendshapes: [...blendshapesCollector.current]
       };
+      if (DEBUG) console.log(`[DEBUG] Saving answer for question ${prev.currentQuestionIndex + 1}. Blendshape frames collected: ${newAnswer.blendshapes.length}`, newAnswer);
       const updatedAnswers = [...prev.allAnswers, newAnswer];
 
       finalTranscriptRef.current = "";
@@ -164,6 +176,7 @@ export default function Interview() {
           currentQuestionIndex: nextIndex,
         };
       } else {
+        if (DEBUG) console.log('[DEBUG] Finalizing interview. All answers to be processed:', updatedAnswers);
         const { scoredAnswers, averageScores } = processAndFinalizeInterview(updatedAnswers);
         return {
           ...prev,
@@ -270,13 +283,14 @@ export default function Interview() {
 
 
   useEffect(() => {
+    if (DEBUG) console.log("[DEBUG] Camera useEffect triggered. Dependencies:", { faceLandmarker, selectedVideoDevice, selectedAudioDevice });
     if (!faceLandmarker || !selectedVideoDevice) return;
 
     let isCancelled = false;
     const video = videoRef.current;
 
     const processVideo = () => {
-        if (isCancelled || !videoRef.current || !videoRef.current.srcObject?.active || videoRef.current.readyState < 2) {
+        if (isCancelled || !videoRef.current || videoRef.current.readyState < 2) {
             if (!isCancelled) {
                 animationFrameId.current = window.requestAnimationFrame(processVideo);
             }
@@ -295,33 +309,37 @@ export default function Interview() {
         const nowInMs = Date.now();
         const results = faceLandmarker.detectForVideo(videoRef.current, nowInMs);
 
-        canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        if (DEBUG) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (results.faceLandmarks) {
-          for (const landmarks of results.faceLandmarks) {
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#C0C0C070", lineWidth: 1 });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, { color: "#FF3030" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, { color: "#FF3030" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, { color: "#30FF30" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW, { color: "#30FF30" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, { color: "#E0E0E0" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, { color: "#E0E0E0" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, { color: "#FF3030" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, { color: "#30FF30" });
-          }
+            if (results.faceLandmarks) {
+              for (const landmarks of results.faceLandmarks) {
+                drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#C0C0C070", lineWidth: 1 });
+                drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, { color: "#FF3030" });
+                drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, { color: "#FF3030" });
+                drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, { color: "#30FF30" });
+                drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW, { color: "#30FF30" });
+                drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, { color: "#E0E0E0" });
+                drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, { color: "#E0E0E0" });
+                drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, { color: "#FF3030" });
+                drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, { color: "#30FF30" });
+              }
+            }
+            canvasCtx.restore();
         }
-        canvasCtx.restore();
 
-        if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
-            if (isListeningRef.current) {
-                blendshapesCollector.current.push(results.faceBlendshapes[0].categories);
+        if (isListeningRef.current && results.faceBlendshapes && results.faceBlendshapes.length > 0) {
+            blendshapesCollector.current.push(results.faceBlendshapes[0].categories);
+            if (DEBUG && blendshapesCollector.current.length % 10 === 0) {
+                console.log(`[DEBUG] Collecting blendshapes... Frame count: ${blendshapesCollector.current.length}`);
             }
         }
         animationFrameId.current = window.requestAnimationFrame(processVideo);
       };
 
     const setupCamera = async () => {
+      if (DEBUG) console.log("[DEBUG] setupCamera called.");
       if (video.srcObject) {
         video.srcObject.getTracks().forEach(track => track.stop());
       }
@@ -339,6 +357,7 @@ export default function Interview() {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         video.addEventListener("loadeddata", () => {
+            if (DEBUG) console.log("[DEBUG] Video data loaded, starting video playback and processing.");
             video.play();
             animationFrameId.current = window.requestAnimationFrame(processVideo);
         });
@@ -350,12 +369,14 @@ export default function Interview() {
     setupCamera();
 
     return () => {
+        if (DEBUG) console.log("[DEBUG] Camera useEffect cleanup.");
         isCancelled = true;
         if(animationFrameId.current) {
             window.cancelAnimationFrame(animationFrameId.current);
         }
         if (videoRef.current && videoRef.current.srcObject) {
             videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+            videoRef.current.srcObject = null;
         }
     }
   }, [faceLandmarker, selectedVideoDevice, selectedAudioDevice]);
@@ -440,7 +461,7 @@ export default function Interview() {
                     muted
                     className="w-full h-full object-cover absolute top-0 left-0"
                 />
-                <canvas ref={canvasRef} className="w-full h-full object-cover absolute top-0 left-0"></canvas>
+                {DEBUG && <canvas ref={canvasRef} className="w-full h-full object-cover absolute top-0 left-0"></canvas>}
                 <div className="absolute top-4 left-4 bg-black bg-opacity-50 p-3 rounded-lg text-white">
                     <p className="text-lg font-semibold">{isInterviewStarted ? questions[currentQuestionIndex] : "면접 대기 중..."}</p>
                 </div>

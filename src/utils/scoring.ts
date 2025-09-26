@@ -33,8 +33,10 @@ const SCORE_WEIGHTS = {
 const ATTENTION_THRESHOLD = 0.25; // 집중도 이탈로 간주할 임계값 하향 조정
 
 // Blendshapes 데이터를 분석하여 점수를 계산하는 함수
-export const calculateScores = (blendshapesData) => {
+export const calculateScores = (blendshapesData, DEBUG = false) => {
+  if (DEBUG) console.log('[DEBUG] calculateScores called with blendshapesData length:', blendshapesData.length);
   if (!blendshapesData || blendshapesData.length === 0) {
+    if (DEBUG) console.log('[DEBUG] No blendshapes data, returning default scores.');
     return {
       attention: 80, // 데이터 없을 시 기본 점수 하향
       stability: 80,
@@ -104,10 +106,12 @@ export const calculateScores = (blendshapesData) => {
   // 최종 점수 계산 (가중 평균 변경: 집중도/안정감 45%, 긍정성 10%)
   const finalScore = attentionScore * 0.45 + stabilityScore * 0.45 + positivityScore * 0.1;
 
-  return {
+  const result = {
     attention: Math.round(attentionScore),
     stability: Math.round(stabilityScore),
     positivity: Math.round(positivityScore),
     finalScore: Math.round(finalScore),
   };
+  if (DEBUG) console.log('[DEBUG] Calculated scores:', result);
+  return result;
 };
