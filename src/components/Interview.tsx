@@ -43,6 +43,7 @@ export default function Interview() {
   const blendshapesCollector = useRef([]);
   const finalTranscriptRef = useRef('');
   const isListeningRef = useRef(false);
+  const animationFrameId = useRef(null);
 
   const [faceLandmarker, setFaceLandmarker] = useState(null);
   const [interviewState, setInterviewState] = useState(initialState);
@@ -149,7 +150,6 @@ export default function Interview() {
           answer: finalTranscriptRef.current,
           blendshapes: [...blendshapesCollector.current]
       };
-      console.log(`[DEBUG] Saving answer for question ${prev.currentQuestionIndex + 1}. Blendshape frames collected: ${newAnswer.blendshapes.length}`, newAnswer);
       const updatedAnswers = [...prev.allAnswers, newAnswer];
 
       finalTranscriptRef.current = "";
@@ -164,7 +164,6 @@ export default function Interview() {
           currentQuestionIndex: nextIndex,
         };
       } else {
-        console.log('[DEBUG] Finalizing interview. All answers to be processed:', updatedAnswers);
         const { scoredAnswers, averageScores } = processAndFinalizeInterview(updatedAnswers);
         return {
           ...prev,
@@ -273,44 +272,28 @@ export default function Interview() {
   useEffect(() => {
     if (!faceLandmarker || !selectedVideoDevice) return;
 
+    let isCancelled = false;
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const canvasCtx = canvas.getContext("2d");
-    const drawingUtils = new DrawingUtils(canvasCtx);
-    let animationFrameId;
-
-    async function setupCamera() {
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(track => track.stop());
-      }
-
-      const constraints = {
-        video: {
-          deviceId: selectedVideoDevice ? { exact: selectedVideoDevice } : undefined,
-        },
-        audio: {
-          deviceId: selectedAudioDevice ? { exact: selectedAudioDevice } : undefined,
-        }
-      };
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        video.srcObject = stream;
-        await video.play();
-        processVideo();
-      } catch (err) {
-        console.error("Error setting up camera:", err);
-      }
-    }
 
     const processVideo = () => {
-        const video = videoRef.current;
+        if (isCancelled || !videoRef.current || !videoRef.current.srcObject?.active || videoRef.current.readyState < 2) {
+            if (!isCancelled) {
+                animationFrameId.current = window.requestAnimationFrame(processVideo);
+            }
+            return;
+        }
+
         const canvas = canvasRef.current;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        if (!canvas) return;
+
+        const canvasCtx = canvas.getContext("2d");
+        const drawingUtils = new DrawingUtils(canvasCtx);
+
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
 
         const nowInMs = Date.now();
-        const results = faceLandmarker.detectForVideo(video, nowInMs);
+        const results = faceLandmarker.detectForVideo(videoRef.current, nowInMs);
 
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
@@ -333,21 +316,46 @@ export default function Interview() {
         if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
             if (isListeningRef.current) {
                 blendshapesCollector.current.push(results.faceBlendshapes[0].categories);
-                // This log will only appear if collection is happening.
-                if (blendshapesCollector.current.length % 10 === 0) {
-                    console.log(`[DEBUG] Collecting blendshapes... Frame count: ${blendshapesCollector.current.length}`);
-                }
             }
         }
-        animationFrameId = window.requestAnimationFrame(processVideo);
+        animationFrameId.current = window.requestAnimationFrame(processVideo);
       };
+
+    const setupCamera = async () => {
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+      }
+
+      const constraints = {
+        video: {
+          deviceId: selectedVideoDevice ? { exact: selectedVideoDevice } : undefined,
+        },
+        audio: {
+          deviceId: selectedAudioDevice ? { exact: selectedAudioDevice } : undefined,
+        }
+      };
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        video.addEventListener("loadeddata", () => {
+            video.play();
+            animationFrameId.current = window.requestAnimationFrame(processVideo);
+        });
+      } catch (err) {
+        console.error("Error setting up camera:", err);
+      }
+    }
 
     setupCamera();
 
     return () => {
-        window.cancelAnimationFrame(animationFrameId);
-        if (video.srcObject) {
-            video.srcObject.getTracks().forEach(track => track.stop());
+        isCancelled = true;
+        if(animationFrameId.current) {
+            window.cancelAnimationFrame(animationFrameId.current);
+        }
+        if (videoRef.current && videoRef.current.srcObject) {
+            videoRef.current.srcObject.getTracks().forEach(track => track.stop());
         }
     }
   }, [faceLandmarker, selectedVideoDevice, selectedAudioDevice]);
