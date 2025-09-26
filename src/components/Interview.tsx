@@ -104,8 +104,15 @@ export default function Interview() {
 
   const handleStartInterview = () => {
     setInterviewState(prev => ({ ...prev, isInterviewStarted: true }));
-    speak(questions[currentQuestionIndex]);
   };
+
+  // 면접 시작 또는 질문 변경 시 TTS 실행
+  useEffect(() => {
+    if (isInterviewStarted && !isInterviewFinished) {
+      speak(questions[currentQuestionIndex]);
+    }
+  }, [isInterviewStarted, currentQuestionIndex, isInterviewFinished]);
+
 
   const processAndFinalizeInterview = (answers) => {
     const scoredAnswers = answers.map(item => ({
@@ -138,7 +145,7 @@ export default function Interview() {
       const newAnswer = {
           question: questions[prev.currentQuestionIndex],
           answer: finalTranscriptRef.current,
-          blendshapes: blendshapesCollector.current
+          blendshapes: [...blendshapesCollector.current] // Create a shallow copy
       };
       const updatedAnswers = [...prev.allAnswers, newAnswer];
 
@@ -147,7 +154,6 @@ export default function Interview() {
 
       const nextIndex = prev.currentQuestionIndex + 1;
       if (nextIndex < questions.length) {
-        speak(questions[nextIndex]);
         return {
           ...prev,
           allAnswers: updatedAnswers,
