@@ -149,6 +149,7 @@ export default function Interview() {
           answer: finalTranscriptRef.current,
           blendshapes: [...blendshapesCollector.current]
       };
+      console.log(`[DEBUG] Saving answer for question ${prev.currentQuestionIndex + 1}. Blendshape frames collected: ${newAnswer.blendshapes.length}`, newAnswer);
       const updatedAnswers = [...prev.allAnswers, newAnswer];
 
       finalTranscriptRef.current = "";
@@ -163,6 +164,7 @@ export default function Interview() {
           currentQuestionIndex: nextIndex,
         };
       } else {
+        console.log('[DEBUG] Finalizing interview. All answers to be processed:', updatedAnswers);
         const { scoredAnswers, averageScores } = processAndFinalizeInterview(updatedAnswers);
         return {
           ...prev,
@@ -331,6 +333,10 @@ export default function Interview() {
         if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
             if (isListeningRef.current) {
                 blendshapesCollector.current.push(results.faceBlendshapes[0].categories);
+                // This log will only appear if collection is happening.
+                if (blendshapesCollector.current.length % 10 === 0) {
+                    console.log(`[DEBUG] Collecting blendshapes... Frame count: ${blendshapesCollector.current.length}`);
+                }
             }
         }
         animationFrameId = window.requestAnimationFrame(processVideo);
