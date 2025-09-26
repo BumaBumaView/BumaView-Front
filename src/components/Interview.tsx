@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   FaceLandmarker,
-  FilesetResolver
+  FilesetResolver,
+  DrawingUtils
 } from "@mediapipe/tasks-vision";
 import { calculateScores } from "../utils/scoring";
 
@@ -38,6 +39,7 @@ if (SpeechRecognition) {
 
 export default function Interview() {
   const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const blendshapesCollector = useRef([]);
   const finalTranscriptRef = useRef('');
   const isListeningRef = useRef(false);
@@ -145,7 +147,7 @@ export default function Interview() {
       const newAnswer = {
           question: questions[prev.currentQuestionIndex],
           answer: finalTranscriptRef.current,
-          blendshapes: [...blendshapesCollector.current] // Create a shallow copy
+          blendshapes: [...blendshapesCollector.current]
       };
       const updatedAnswers = [...prev.allAnswers, newAnswer];
 
@@ -222,10 +224,13 @@ export default function Interview() {
       const landmarker = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          delegate: "GPU"
         },
         outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
         runningMode: "VIDEO",
+        numFaces: 1
       });
       setFaceLandmarker(landmarker);
     }
@@ -267,7 +272,9 @@ export default function Interview() {
     if (!faceLandmarker || !selectedVideoDevice) return;
 
     const video = videoRef.current;
-    let stream;
+    const canvas = canvasRef.current;
+    const canvasCtx = canvas.getContext("2d");
+    const drawingUtils = new DrawingUtils(canvasCtx);
     let animationFrameId;
 
     async function setupCamera() {
@@ -285,34 +292,53 @@ export default function Interview() {
       };
 
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
-        video.onloadedmetadata = () => {
-          video.play();
-          processVideo();
-        };
+        video.addEventListener("loadeddata", processVideo);
       } catch (err) {
         console.error("Error setting up camera:", err);
       }
     }
 
     const processVideo = () => {
-        if (video.readyState >= 2) {
-          const nowInMs = Date.now();
-          const results = faceLandmarker.detectForVideo(video, nowInMs);
-          if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const nowInMs = Date.now();
+        const results = faceLandmarker.detectForVideo(video, nowInMs);
+
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (results.faceLandmarks) {
+          for (const landmarks of results.faceLandmarks) {
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#C0C0C070", lineWidth: 1 });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, { color: "#FF3030" });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, { color: "#FF3030" });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, { color: "#30FF30" });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW, { color: "#30FF30" });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, { color: "#E0E0E0" });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, { color: "#E0E0E0" });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, { color: "#FF3030" });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, { color: "#30FF30" });
+          }
+        }
+        canvasCtx.restore();
+
+        if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
             if (isListeningRef.current) {
                 blendshapesCollector.current.push(results.faceBlendshapes[0].categories);
             }
-          }
         }
-        animationFrameId = requestAnimationFrame(processVideo);
+        animationFrameId = window.requestAnimationFrame(processVideo);
       };
 
     setupCamera();
 
     return () => {
-        cancelAnimationFrame(animationFrameId);
+        window.cancelAnimationFrame(animationFrameId);
         if (video.srcObject) {
             video.srcObject.getTracks().forEach(track => track.stop());
         }
@@ -397,8 +423,9 @@ export default function Interview() {
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover absolute top-0 left-0"
                 />
+                <canvas ref={canvasRef} className="w-full h-full object-cover absolute top-0 left-0"></canvas>
                 <div className="absolute top-4 left-4 bg-black bg-opacity-50 p-3 rounded-lg text-white">
                     <p className="text-lg font-semibold">{isInterviewStarted ? questions[currentQuestionIndex] : "면접 대기 중..."}</p>
                 </div>
